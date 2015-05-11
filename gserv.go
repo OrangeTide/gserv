@@ -2,30 +2,20 @@
 package main
 
 import (
-	"io"
-	"fmt"
+	"encoding/json"
 	"flag"
-	"net/http"
-	"log"
-	"path/filepath"
-	"html/template"	
+	"fmt"
 	"golang.org/x/net/websocket"
+	"html/template"
+	"io"
+	"log"
+	"net/http"
+	"path/filepath"
 )
 
-/*
-type wsHandler struct {
-}
-
-// This function 
-// implements the Handler interface for wsHandler struct.
-func (ws wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-		
-}
-*/
-
 const (
-	msgChanSize uint = 2
-	version string = "gserv version 0.1p0"
+	msgChanSize uint   = 2
+	version     string = "gserv-0.1p0"
 )
 
 var topClientId = 0
@@ -37,12 +27,13 @@ type Server struct {
 type Message struct {
 	content string
 }
+
 type Client struct {
-	id int
-	ws *websocket.Conn
+	id     int
+	ws     *websocket.Conn
 	server *Server
-	msgCh chan *Message
-	doneCh chan bool // TODO: we could close the msgCh
+	msgCh  chan *Message
+	doneCh chan bool // TODO: we could close the msgCh?
 }
 
 func NewClient(ws *websocket.Conn, server *Server) *Client {
@@ -51,70 +42,108 @@ func NewClient(ws *websocket.Conn, server *Server) *Client {
 	}
 	topClientId++
 	return &Client{
-		id: topClientId,
-		ws: ws,
-		server: server, 
-		msgCh: make(chan *Message, msgChanSize),
+		id:     topClientId,
+		ws:     ws,
+		server: server,
+		msgCh:  make(chan *Message, msgChanSize),
 		doneCh: make(chan bool),
 	}
 }
 
+func sendClient(enc *json.Encoder, pkttype string, data string) error {
+	err := enc.Encode(map[string]string{
+		"type": pkttype,
+		"data": data,
+	})
+	if err != nil {
+		log.Println(err.Error())
+	}
+	return err
+}
+
 func (c *Client) Listen() {
-	io.Copy(c.ws, c.ws) // simple echo example
+	enc := json.NewEncoder(c.ws)
+	dec := json.NewDecoder(c.ws)
+
+	err := sendClient(enc, "notice", "Welcome to the System! ("+version+")")
+	if err != nil {
+		return
+	}
+
+	for {
+		var m map[string]string
+		if err := dec.Decode(&m); err == io.EOF {
+			break
+		} else if err != nil {
+			log.Println(err)
+			break
+		}
+		log.Printf("%s: %s\n", m["type"], m["data"])
+
+		// TODO: process command....
+		switch m["type"] {
+		case "cmd":
+			err := sendClient(enc, "notice", "I don't know: "+m["data"])
+			if err != nil {
+				return
+			}
+		default:
+			err := sendClient(enc, "notice", "INVALID TYPE: "+m["type"])
+			if err != nil {
+				return
+			}
+		}
+	}
 }
 
 func NewServer(homeTemplate *template.Template) *Server {
-	/*** SERVER ***/
 	serv := &Server{
-			mux: http.NewServeMux(),
+		mux: http.NewServeMux(),
 	}
 	serv.mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path != "/" {
-				http.NotFound(w, req)
-				return
-		}		
+			http.NotFound(w, req)
+			return
+		}
 		homeTemplate.Execute(w, req.Host)
-		// fmt.Fprintln(w, "Hello World!")
 		log.Println("Request processed!")
-	})	
+	})
 	serv.mux.HandleFunc("/version", func(w http.ResponseWriter, req *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")				
-		fmt.Fprintln(w, "Version: " + version)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		fmt.Fprintln(w, "Version: "+version)
 		log.Println("version requested!")
-	})	
+	})
 	serv.mux.Handle("/ws", websocket.Handler(func(ws *websocket.Conn) {
 		defer func() {
-				err := ws.Close()
-				if err != nil {
-						log.Println(err)
-						// TODO: send err to a channel
-				}
-				log.Println("Websocket closed.")
-		} ()
+			err := ws.Close()
+			if err != nil {
+				log.Println(err)
+				// TODO: send err to a channel
+			}
+			log.Println("Websocket closed.")
+		}()
 
-		log.Println("Websocket started!")
-		
+		log.Printf("Request of %s\n", ws.LocalAddr().String())
+		// TODO: Content-Type: text/event-stream
+		// conf.Header.Set("Content-Type", "text/event-stream")
 		client := NewClient(ws, serv)
 		serv.Add(client)
-		client.Listen()		
-	}))	
+		client.Listen()
+	}))
 	return serv
 }
 
-func (s *Server) Add(c *Client) {	
+func (s *Server) Add(c *Client) {
 }
 
 func main() {
 	flag.Parse()
 	fmt.Println(version)
-	
-	
-	/*** Template ***/
 	root := flag.String("root", ".", "path to root")
 	homeTemplate := template.Must(template.ParseFiles(filepath.Join(*root, "home.html")))
 	serv := NewServer(homeTemplate)
 	err := http.ListenAndServe(":8080", serv.mux)
 	if err != nil {
-		log.Fatal("Could not start HTTP server", err)
-	}	
+		log.Fatal("Could not start HTTP server" + err.Error())
+	}
 }
