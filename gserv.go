@@ -18,14 +18,17 @@ const (
 	version     string = "gserv-0.1p0"
 )
 
+// TODO: need to provide this in a race-free way
 var topClientId = 0
 
 type Server struct {
-	mux *http.ServeMux
+	mux    *http.ServeMux
+	client map[int]*Client
 }
 
 type Message struct {
-	content string
+	pkttype string
+	data    string
 }
 
 type Client struct {
@@ -40,13 +43,36 @@ func NewClient(ws *websocket.Conn, server *Server) *Client {
 	if ws == nil || server == nil {
 		return nil
 	}
+	// TODO: need to provide this in a race-free way
+	id := topClientId
 	topClientId++
 	return &Client{
-		id:     topClientId,
+		id:     id,
 		ws:     ws,
 		server: server,
 		msgCh:  make(chan *Message, msgChanSize),
 		doneCh: make(chan bool),
+	}
+}
+
+func (c *Client) SendMsg(m *Message) {
+	c.msgCh <- m
+}
+
+func (c *Client) msgEncoderLoop(enc *json.Encoder) {
+	// TODO: need to terminate this when msgCh closes
+	for {
+		select {
+		case msg := <-c.msgCh:
+			if msg == nil {
+				log.Println("msgChan was closed!")
+				return
+			}
+			err := sendClient(enc, msg.pkttype, msg.data)
+			if err != nil {
+				c.Close()
+			}
+		}
 	}
 }
 
@@ -61,10 +87,19 @@ func sendClient(enc *json.Encoder, pkttype string, data string) error {
 	return err
 }
 
+func (c *Client) Close() {
+	// for this to work msgEncoderLoop() must terminate when it starts getting nil messages
+	close(c.msgCh)
+}
+
 func (c *Client) Listen() {
+	defer func() {
+		c.Close()
+	}()
 	enc := json.NewEncoder(c.ws)
 	dec := json.NewDecoder(c.ws)
 
+	go c.msgEncoderLoop(enc)
 	err := sendClient(enc, "notice", "Welcome to the System! ("+version+")")
 	if err != nil {
 		return
@@ -83,10 +118,13 @@ func (c *Client) Listen() {
 		// TODO: process command....
 		switch m["type"] {
 		case "cmd":
-			err := sendClient(enc, "notice", "I don't know: "+m["data"])
-			if err != nil {
-				return
-			}
+			c.server.Broadcast("Someone says '%s'", m["data"])
+		/* TODO: add command parser
+		err := sendClient(enc, "notice", "I don't know: "+m["data"])
+		if err != nil {
+			return
+		}
+		*/
 		default:
 			err := sendClient(enc, "notice", "INVALID TYPE: "+m["type"])
 			if err != nil {
@@ -98,7 +136,8 @@ func (c *Client) Listen() {
 
 func NewServer(homeTemplate *template.Template) *Server {
 	serv := &Server{
-		mux: http.NewServeMux(),
+		mux:    http.NewServeMux(),
+		client: make(map[int]*Client),
 	}
 	serv.mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path != "/" {
@@ -129,11 +168,30 @@ func NewServer(homeTemplate *template.Template) *Server {
 		client := NewClient(ws, serv)
 		serv.Add(client)
 		client.Listen()
+		serv.Del(client)
 	}))
 	return serv
 }
 
 func (s *Server) Add(c *Client) {
+	id := c.id
+	s.client[id] = c
+}
+
+func (s *Server) Del(c *Client) {
+	id := c.id
+	delete(s.client, id)
+}
+
+func (s *Server) Broadcast(format string, a ...interface{}) {
+	data := fmt.Sprintf(format, a...)
+	var m *Message = &Message{
+		pkttype: "msg",
+		data:    data,
+	}
+	for _, c := range s.client {
+		c.SendMsg(m)
+	}
 }
 
 func main() {
