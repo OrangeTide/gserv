@@ -4,45 +4,89 @@
 <title>MUD</title>
 <script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
 <script type="text/javascript">
-    $(function() {
+$(function() {
 
-    var conn;
-    var msg = $("#msg");
-    var log = $("#log");
+	/* create String.trim if it does not exist. Not necessary on a modern browser */
+	if(typeof(String.prototype.trim) === "undefined")
+	{
+		String.prototype.trim = function()
+		{
+			return String(this).replace(/^\s+|\s+$/g, '');
+		};
+	}
 
-    function appendLog(msg) {
-        var d = log[0]
-        var doScroll = d.scrollTop == d.scrollHeight - d.clientHeight;
-        msg.appendTo(log)
-        if (doScroll) {
-            d.scrollTop = d.scrollHeight - d.clientHeight;
-        }
-    }
+	var conn;
+	var msg = $("#msg");
+	var log = $("#log");
+	var debug = $("#debug");
 
-    $("#form").submit(function() {
-        if (!conn) {
-            return false;
-        }
-        if (!msg.val()) {
-            return false;
-        }		
-		var pkt = {type: "cmd", data: msg.val()};
-        conn.send(JSON.stringify(pkt));
-		appendLog($("<div/>").text("SENT:" + JSON.stringify(pkt))); // for debug
-        msg.val("");
-        return false
-    });
+	function appendLog(msg)
+	{
+		var d = log[0]
+		var doScroll = d.scrollTop == d.scrollHeight - d.clientHeight;
+		msg.appendTo(log)
+		if (doScroll)
+		{
+			d.scrollTop = d.scrollHeight - d.clientHeight;
+		}
+	}
 
-    if (window["WebSocket"]) {
-		appendLog($("<div>Initializing ...</div>"))		
-        conn = new WebSocket("ws://{{$}}/ws");
-        conn.onclose = function(e) {
-            appendLog($("<div><b>Connection closed.</b></div>"))
-        }
-        conn.onmessage = function(e) {
+	function doCmd(cmd, msg)
+	{
+		// TODO: validate the command, and further process its arguments
+		msg = msg.trim(); /* for 'say' and others we should trim the whitespace */
+		var pkt = { type: cmd, data: msg };
+		conn.send(JSON.stringify(pkt));
+
+		if (debug.is(":checked"))
+		{
+			appendLog($("<div/>").text("SENT:" + JSON.stringify(pkt))); // for debug
+		}
+	}
+
+	function parseCmd(msg)
+	{
+		msg = msg.trim();
+		// TODO: check for shortcut aliases like " and @
+		var n = msg.indexOf(" ");
+		var cmd = msg.substr(0, n);
+		doCmd(cmd, msg.substr(n))
+		return true
+	}
+
+	/* Process user input */
+	$("#form").submit(function()
+	{
+		if (!conn)
+		{
+			return false;
+		}
+		if (!msg.val())
+		{
+			return false;
+		}
+		parseCmd(msg.val());
+		msg.val("");
+		return false
+	});
+
+
+	if (window["WebSocket"])
+	{
+		appendLog($("<div>Initializing ...</div>"))
+		conn = new WebSocket("ws://{{$}}/ws");
+		conn.onclose = function(e)
+		{
+			appendLog($("<div><b>Connection closed.</b></div>"))
+		}
+		/* Process incomming packets */
+		conn.onmessage = function(e)
+		{
 			var message = JSON.parse(e.data);
-			if ('type' in message) {
-				switch(message['type']) {
+			if ('type' in message)
+			{
+				switch(message['type'])
+				{
 					case 'notice':
 						appendLog($("<b/>").html($("<div/>").text(message['data'])));
 						break;
@@ -51,51 +95,54 @@
 						break;
 					default:
 						appendLog($("<div/>").text("UNKNOWN!"));
-						// appendLog($("<div/>").text("UNKNOWN:" + JSON.stringify(message)));
+						appendLog($("<div/>").text("UNKNOWN:" + JSON.stringify(message)));
 				}
-			
+
 			}
-        }
+		}
 		// TODO: use EventSource() and "text/event-stream" instead
-    } else {
-        appendLog($("<div><b>Your browser does not support WebSockets.</b></div>"))
-    }
-    });
+	}
+	else
+	{
+		appendLog($("<div><b>Your browser does not support WebSockets.</b></div>"))
+	}
+});
 </script>
 <style type="text/css">
 html {
-    overflow: hidden;
+	overflow: hidden;
 }
 
 body {
-    overflow: hidden;
-    padding: 0;
-    margin: 0;
-    width: 100%;
-    height: 100%;
-    background: gray;
+	overflow: hidden;
+	padding: 0;
+	margin: 0;
+	width: 100%;
+	height: 100%;
+	background: gray;
 }
 
 #log {
-    background: white;
-    margin: 0;
-    padding: 0.5em 0.5em 0.5em 0.5em;
-    position: absolute;
-    top: 0.5em;
-    left: 0.5em;
-    right: 0.5em;
-    bottom: 3em;
-    overflow: auto;
+	background: white;
+	margin: 0;
+	padding: 0.5em 0.5em 0.5em 0.5em;
+	position: absolute;
+	top: 0.5em;
+	left: 0.5em;
+	right: 0.5em;
+	bottom: 3em;
+	overflow: auto;
+	white-space: pre-wrap;
 }
 
 #form {
-    padding: 0 0.5em 0 0.5em;
-    margin: 0;
-    position: absolute;
-    bottom: 1em;
-    left: 0px;
-    width: 100%;
-    overflow: hidden;
+	padding: 0 0.5em 0 0.5em;
+	margin: 0;
+	position: absolute;
+	bottom: 1em;
+	left: 0px;
+	width: 100%;
+	overflow: hidden;
 }
 
 </style>
@@ -103,8 +150,9 @@ body {
 <body>
 <div id="log"></div>
 <form id="form">
-    <input type="submit" value="Send" />
-    <input type="text" id="msg" size="100"/>
+	<input type="submit" value="Send" />
+	<input type="text" id="msg" size="100"/>
+	<input type="checkbox" id="debug" checked>Debug
 </form>
 </body>
 </html>

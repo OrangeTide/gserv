@@ -117,16 +117,10 @@ func (c *Client) Listen() {
 
 		// TODO: process command....
 		switch m["type"] {
-		case "cmd":
+		case "say":
 			c.server.Broadcast("Someone says '%s'", m["data"])
-		/* TODO: add command parser
-		err := sendClient(enc, "notice", "I don't know: "+m["data"])
-		if err != nil {
-			return
-		}
-		*/
 		default:
-			err := sendClient(enc, "notice", "INVALID TYPE: "+m["type"])
+			err := sendClient(enc, "notice", "INVALID COMMAND: "+m["type"])
 			if err != nil {
 				return
 			}
