@@ -55,7 +55,7 @@ $(function() {
 	}
 
 	/* Process user input */
-	$("#form").submit(function()
+	$("#command").submit(function()
 	{
 		if (!conn)
 		{
@@ -74,6 +74,7 @@ $(function() {
 	if (window["WebSocket"])
 	{
 		appendLog($("<div>Initializing ...</div>"))
+
 		conn = new WebSocket("ws://{{$}}/ws");
 		conn.onclose = function(e)
 		{
@@ -109,50 +110,86 @@ $(function() {
 });
 </script>
 <style type="text/css">
-html {
-	overflow: hidden;
+:root {
+	--main-fg: #BD4932;
+	--main-bg: #FFD34E;
+	--input-fg: #105B63;
+	--input-bg: #FFFAD5;
+	--log-bg: #442200;
+	--log-fg: #AAFF99;
 }
 
-body {
-	overflow: hidden;
-	padding: 0;
-	margin: 0;
-	width: 100%;
+html, body {
+	color: var(--main-fg);
+	background: var(--main-bg);
+}
+
+.iface {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
 	height: 100%;
-	background: gray;
+	z-index: 9999;
+	margin: 0;
+	padding: 0;
 }
 
-#log {
-	background: white;
-	margin: 0;
-	padding: 0.5em 0.5em 0.5em 0.5em;
-	position: absolute;
-	top: 0.5em;
-	left: 0.5em;
-	right: 0.5em;
-	bottom: 3em;
+.log-pane {
+	color: var(--log-fg);
+	background: var(--log-bg);
+	margin: 0.5em;
+	word-wrap: break-word;
+	outline: 0px none;
+	font-family: Consolas,Courier,"Courier New","Andale Mono",Monaco,monospace;
 	overflow: auto;
-	white-space: pre-wrap;
+	height: calc(100% - 50px);
 }
 
-#form {
-	padding: 0 0.5em 0 0.5em;
-	margin: 0;
+.input {
+	color: var(--input-fg);
+	background: var(--input-bg);
+	display: block;
 	position: absolute;
-	bottom: 1em;
-	left: 0px;
-	width: 100%;
-	overflow: hidden;
+	bottom: 5px;
+	left: 5px;
+	right: 5px;
+	padding-top: 5px;
+	border-width: 1px medium medium;
+	border-style: solid none none;
 }
 
 </style>
+
 </head>
 <body>
-<div id="log"></div>
-<form id="form">
-	<input type="submit" value="Send" />
-	<input type="text" id="msg" size="100"/>
-	<input type="checkbox" id="debug" checked>Debug
-</form>
+
+<div id="app" class="iface">
+	<div id="log" class="log-pane"></div>
+	<div id="input" class="input">
+
+		<!-- fix this so we dynamically pop this on/off -->
+		<!--
+		<form id="login" style="visibility:hidden">
+			<span>
+				<input type="submit" value="Login" />
+				<input type="text" id="login" size="30"/>
+			</span>
+			<br>
+			<span>
+				<input type="submit" value="New" />
+				<input type="password" id="pass" size="30"/>
+			</span>
+		</form>
+		-->
+
+		<form id="command">
+			<input type="submit" value="Send" />
+			<input type="text" id="msg" size="100"/>
+			<input type="checkbox" id="debug" checked>Debug</input>
+		</form>
+	</div>
+</div>
+
 </body>
 </html>

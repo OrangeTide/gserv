@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/boltdb/bolt"
 	"golang.org/x/net/websocket"
 	"html/template"
 	"io"
@@ -191,10 +192,21 @@ func (s *Server) Broadcast(format string, a ...interface{}) {
 func main() {
 	flag.Parse()
 	fmt.Println(version)
+
+	/* open the database */
+	dbfile := flag.String("db", "gserv.db", "path to DB file")
+	db, err := bolt.Open(*dbfile, 0600, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	/* load the home.html template */
 	root := flag.String("root", ".", "path to root")
 	homeTemplate := template.Must(template.ParseFiles(filepath.Join(*root, "home.html")))
 	serv := NewServer(homeTemplate)
-	err := http.ListenAndServe(":8080", serv.mux)
+
+	err = http.ListenAndServe(":8080", serv.mux)
 	if err != nil {
 		log.Fatal("Could not start HTTP server" + err.Error())
 	}
